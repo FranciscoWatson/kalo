@@ -306,3 +306,44 @@ th.num {
   font-size: 0.85rem;
   margin-top: 0.5rem;
 }
+
+/* --- V2 ------------------------------------------------------------------ */
+
+.barra nav a.activo {
+  color: var(--acento);
+  font-weight: 600;
+}
+
+.estado[data-estado="activo"] {
+  background: var(--acento-suave);
+  color: var(--ok);
+}
+
+.estado[data-estado="recalculado"] {
+  background: var(--aviso-suave);
+  color: var(--aviso);
+}
+
+.estado[data-estado="pausado"] {
+  background: #eef0ee;
+  color: var(--texto-suave);
+}
+
+.estado[data-estado="cumplido"] {
+  background: var(--acento);
+  color: #fff;
+}
+
+.tarjeta ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.tarjeta ul li {
+  margin-bottom: 0.35rem;
+}
+
+.campo label input[type="radio"] {
+  width: auto;
+  margin-right: 0.35rem;
+}
