@@ -297,8 +297,8 @@ export default async function PaginaHoy() {
                 ))}
               </ul>
               <p className="pie-nota">
-                Recomendaciones generadas a partir de tu perfil, tu objetivo y lo
-                que registraste hoy.
+                Recomendaciones generadas a partir de tu perfil, tu objetivo, lo
+                que registraste hoy y tus últimos 7 días.
               </p>
             </section>
           </>

@@ -43,6 +43,7 @@ import {
   LIMITES_V2,
   MENSAJES,
   MENSAJES_V2,
+  MENSAJES_V3,
   acotarTasa,
   calcularKcalEjercicio,
   calcularMetas,
@@ -434,13 +435,26 @@ export async function crearAlimentoPropioAccion(
   return conExito("Alimento guardado.");
 }
 
-export async function eliminarAlimentoPropioAccion(datos: FormData): Promise<void> {
+/**
+ * V3 (KL-21): el borrado puede quedar bloqueado, asi que la accion devuelve
+ * estado para poder mostrar el motivo dentro del bloque.
+ */
+export async function eliminarAlimentoPropioAccion(
+  _prev: EstadoFormulario,
+  datos: FormData,
+): Promise<EstadoFormulario> {
   const usuarioId = await usuarioActualId();
   if (!usuarioId) redirect("/login");
 
   const id = Number(datos.get("id"));
-  if (Number.isInteger(id)) eliminarAlimentoPropio(usuarioId, id);
+  if (!Number.isInteger(id)) return conErrores(MENSAJES_V3.registroInexistente);
+
+  const resultado = eliminarAlimentoPropio(usuarioId, id);
   revalidarTodo();
+
+  return resultado.eliminado
+    ? { errores: [], avisos: [], ok: true, mensaje: resultado.mensaje }
+    : conErrores(resultado.mensaje);
 }
 
 // --- KL-14: comidas guardadas ------------------------------------------------
@@ -531,13 +545,24 @@ export async function guardarPesadaAccion(
   return conExito(undefined, avisos);
 }
 
-export async function eliminarPesadaAccion(datos: FormData): Promise<void> {
+/**
+ * V3 (KL-21): al eliminar la pesada de referencia el plan re-apunta, y hay que
+ * decirselo al usuario.
+ */
+export async function eliminarPesadaAccion(
+  _prev: EstadoFormulario,
+  datos: FormData,
+): Promise<EstadoFormulario> {
   const usuarioId = await usuarioActualId();
   if (!usuarioId) redirect("/login");
 
   const id = Number(datos.get("id"));
-  if (Number.isInteger(id)) eliminarPesada(usuarioId, id);
+  if (!Number.isInteger(id)) return conErrores(MENSAJES_V3.registroInexistente);
+
+  const mensaje = eliminarPesada(usuarioId, id);
   revalidarTodo();
+
+  return { errores: [], avisos: [], ok: true, mensaje };
 }
 
 export async function cambiarEstadoPlanAccion(datos: FormData): Promise<void> {

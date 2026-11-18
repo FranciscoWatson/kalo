@@ -9,6 +9,10 @@ import {
   type EstadoFormulario,
 } from "../acciones";
 import { Mensajes } from "../componentes/mensajes";
+import {
+  useCampoSincronizado,
+  useLimpiarTrasAlta,
+} from "../componentes/campos";
 import { ETIQUETA_INTENSIDAD, type Intensidad } from "@/lib/calc";
 import { EJERCICIOS } from "@/lib/ejercicios";
 import type { ComidaGuardada, OpcionAlimento } from "@/lib/datos";
@@ -23,12 +27,19 @@ export function FormularioComida({ opciones }: { opciones: OpcionAlimento[] }) {
     INICIAL,
   );
   const [alimento, setAlimento] = useState(opciones[0]?.valor ?? "");
+  const [porciones, setPorciones] = useState("1");
+
+  // KL-22: el select conserva lo elegido y las porciones vuelven a 1.
+  useLimpiarTrasAlta(estado, () => setPorciones("1"));
+
+  const refAlimento = useCampoSincronizado<HTMLSelectElement>(alimento);
+  const refPorciones = useCampoSincronizado<HTMLInputElement>(porciones);
 
   const delCatalogo = opciones.filter((o) => !o.propio);
   const propios = opciones.filter((o) => o.propio);
 
   return (
-    <form action={accion}>
+    <form action={accion} noValidate>
       <Mensajes errores={estado.errores} />
 
       <div className="fila-form">
@@ -37,6 +48,7 @@ export function FormularioComida({ opciones }: { opciones: OpcionAlimento[] }) {
           <select
             id="alimento"
             name="alimento"
+            ref={refAlimento}
             value={alimento}
             onChange={(e) => setAlimento(e.target.value)}
           >
@@ -64,14 +76,16 @@ export function FormularioComida({ opciones }: { opciones: OpcionAlimento[] }) {
           <input
             id="porciones"
             name="porciones"
-            type="number"
-            step="0.1"
-            defaultValue="1"
+            type="text"
+            inputMode="decimal"
+            ref={refPorciones}
+            value={porciones}
+            onChange={(e) => setPorciones(e.target.value)}
           />
         </div>
 
         <button type="submit" disabled={pendiente}>
-          {pendiente ? "Agregando..." : "Agregar"}
+          {pendiente ? "Agregando..." : "Agregar comida"}
         </button>
       </div>
     </form>
@@ -87,7 +101,10 @@ export function FormularioComidaGuardada({
     registrarComidaGuardadaAccion,
     INICIAL,
   );
-  const [comida, setComida] = useState(String(comidas[0]?.id ?? ""));
+  const [comida, setComida] = useState(
+    comidas[0] ? String(comidas[0].id) : "",
+  );
+  const refComida = useCampoSincronizado<HTMLSelectElement>(comida);
 
   if (comidas.length === 0) {
     return (
@@ -99,7 +116,7 @@ export function FormularioComidaGuardada({
   }
 
   return (
-    <form action={accion}>
+    <form action={accion} noValidate>
       <Mensajes errores={estado.errores} ok={estado.mensaje ?? null} />
 
       <div className="fila-form">
@@ -108,6 +125,7 @@ export function FormularioComidaGuardada({
           <select
             id="comida"
             name="comida"
+            ref={refComida}
             value={comida}
             onChange={(e) => setComida(e.target.value)}
           >
@@ -133,10 +151,18 @@ export function FormularioEjercicio() {
     INICIAL,
   );
   const [ejercicio, setEjercicio] = useState("");
+  const [minutos, setMinutos] = useState("30");
   const [intensidad, setIntensidad] = useState<Intensidad>("moderada");
 
+  // KL-22: los selects conservan lo elegido, la duración vuelve a 30.
+  useLimpiarTrasAlta(estado, () => setMinutos("30"));
+
+  const refEjercicio = useCampoSincronizado<HTMLSelectElement>(ejercicio);
+  const refMinutos = useCampoSincronizado<HTMLInputElement>(minutos);
+  const refIntensidad = useCampoSincronizado<HTMLSelectElement>(intensidad);
+
   return (
-    <form action={accion}>
+    <form action={accion} noValidate>
       <Mensajes errores={estado.errores} />
 
       <div className="fila-form">
@@ -145,6 +171,7 @@ export function FormularioEjercicio() {
           <select
             id="ejercicio"
             name="ejercicio"
+            ref={refEjercicio}
             value={ejercicio}
             onChange={(e) => setEjercicio(e.target.value)}
           >
@@ -159,7 +186,16 @@ export function FormularioEjercicio() {
 
         <div className="campo" style={{ flex: "1 1 120px" }}>
           <label htmlFor="minutos">Duración (min)</label>
-          <input id="minutos" name="minutos" type="number" step="1" defaultValue="30" />
+          {/* DF-08: sin step ni min, para que el mensaje lo dé la aplicación. */}
+          <input
+            id="minutos"
+            name="minutos"
+            type="text"
+            inputMode="decimal"
+            ref={refMinutos}
+            value={minutos}
+            onChange={(e) => setMinutos(e.target.value)}
+          />
         </div>
 
         <div className="campo" style={{ flex: "1 1 140px" }}>
@@ -167,6 +203,7 @@ export function FormularioEjercicio() {
           <select
             id="intensidad"
             name="intensidad"
+            ref={refIntensidad}
             value={intensidad}
             onChange={(e) => setIntensidad(e.target.value as Intensidad)}
           >
@@ -188,15 +225,27 @@ export function FormularioEjercicio() {
 
 export function FormularioAgua() {
   const [estado, accion, pendiente] = useActionState(agregarAguaAccion, INICIAL);
+  const [ml, setMl] = useState("250");
+
+  useLimpiarTrasAlta(estado, () => setMl("250"));
+  const refMl = useCampoSincronizado<HTMLInputElement>(ml);
 
   return (
-    <form action={accion}>
+    <form action={accion} noValidate>
       <Mensajes errores={estado.errores} />
 
       <div className="fila-form">
         <div className="campo" style={{ flex: "1 1 140px" }}>
           <label htmlFor="ml">Agua (ml)</label>
-          <input id="ml" name="ml" type="number" step="1" defaultValue="250" />
+          <input
+            id="ml"
+            name="ml"
+            type="text"
+            inputMode="decimal"
+            ref={refMl}
+            value={ml}
+            onChange={(e) => setMl(e.target.value)}
+          />
         </div>
 
         <button type="submit" disabled={pendiente}>

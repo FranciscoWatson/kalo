@@ -155,6 +155,38 @@ button.secundario {
   font-weight: 500;
 }
 
+/* V3 (KL-19): el boton de exportar es un enlace de descarga, pero se ve igual
+   que los demas botones secundarios. */
+a.secundario {
+  display: inline-block;
+  background: transparent;
+  color: var(--texto-suave);
+  border: 1px solid var(--borde);
+  border-radius: 7px;
+  padding: 0.6rem 1.1rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+a.secundario:hover {
+  border-color: var(--acento);
+  color: var(--acento);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Titulo de bloque con una accion a la derecha. */
+.titulo-con-accion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 button.enlace {
   background: none;
   color: var(--error);

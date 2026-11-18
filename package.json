@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "cuentas": "node --import ./scripts/registrar-ts.mjs scripts/preparar-cuentas.mts"
+    "cuentas": "node --import ./scripts/registrar-ts.mjs scripts/preparar-cuentas.mts",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:slow": "playwright test --config=playwright.demo.config.ts",
+    "test:e2e:report": "playwright show-report",
+    "verificar": "node scripts/verificar-motor.mts && node --import ./scripts/registrar-ts.mjs scripts/verificar-motor-v2.mts && node --import ./scripts/registrar-ts.mjs scripts/verificar-motor-v3.mts"
   },
   "dependencies": {
     "next": "16.3.6",
@@ -14,6 +19,7 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@types/node": "^24.19.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",

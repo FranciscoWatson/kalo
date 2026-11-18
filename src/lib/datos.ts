@@ -8,6 +8,7 @@ import { getDb } from "./db";
 import { CATALOGO, buscarAlimento, type Alimento } from "./catalogo";
 import { buscarEjercicio } from "./ejercicios";
 import { recomendaciones } from "./coach";
+import { DIAS_EXPORTADOS, type FilaSemana } from "./exportar";
 
 export type { OrigenAlimento } from "./calc";
 import {
@@ -18,9 +19,13 @@ import {
   estadoDelDia,
   evaluarAjustePlan,
   extraAguaPorEjercicio,
+  mensajeAlimentoEliminado,
+  mensajeAlimentoEnUso,
   mensajeObjetivoCumplido,
   mensajePesadaActualizada,
+  mensajePesadaEliminada,
   metaDelDia,
+  normalizarNombre,
   type EstadoDia,
   type EstadoPlan,
   type Intensidad,
@@ -404,13 +409,16 @@ export function listarAlimentosPropios(usuarioId: number): AlimentoPropio[] {
   }));
 }
 
+/**
+ * V3 (DF-04): la comparacion ignora mayusculas, tildes y espacios de mas, que
+ * es como la hace una persona. "TARTA DE JAMON" y "Tarta de jamón" son el
+ * mismo nombre.
+ */
 export function existeAlimentoPropio(usuarioId: number, nombre: string): boolean {
-  const fila = getDb()
-    .prepare(
-      "SELECT id FROM alimentos_propios WHERE usuario_id = ? AND nombre = ?",
-    )
-    .get(usuarioId, nombre.trim());
-  return Boolean(fila);
+  const buscado = normalizarNombre(nombre);
+  return listarAlimentosPropios(usuarioId).some(
+    (a) => normalizarNombre(a.nombre) === buscado,
+  );
 }
 
 export function crearAlimentoPropio(
@@ -434,10 +442,39 @@ export function crearAlimentoPropio(
     );
 }
 
-export function eliminarAlimentoPropio(usuarioId: number, id: number): void {
+/** Comidas guardadas que usan un alimento propio (KL-21). */
+export function comidasQueUsan(usuarioId: number, id: number): string[] {
+  return listarComidasGuardadas(usuarioId)
+    .filter((c) =>
+      c.items.some((i) => i.origen === "propio" && i.alimentoId === String(id)),
+    )
+    .map((c) => c.nombre);
+}
+
+/**
+ * V3 (KL-21, corrige DF-05): un alimento propio que forma parte de una comida
+ * guardada no se puede eliminar. Antes se borraba y la comida quedaba con un
+ * item roto.
+ */
+export function eliminarAlimentoPropio(
+  usuarioId: number,
+  id: number,
+): { eliminado: boolean; mensaje: string } {
+  const alimento = listarAlimentosPropios(usuarioId).find(
+    (a) => a.idNumerico === id,
+  );
+  if (!alimento) return { eliminado: false, mensaje: "" };
+
+  const enUso = comidasQueUsan(usuarioId, id);
+  if (enUso.length > 0) {
+    return { eliminado: false, mensaje: mensajeAlimentoEnUso(alimento.nombre, enUso) };
+  }
+
   getDb()
     .prepare("DELETE FROM alimentos_propios WHERE id = ? AND usuario_id = ?")
     .run(id, usuarioId);
+
+  return { eliminado: true, mensaje: mensajeAlimentoEliminado(alimento.nombre) };
 }
 
 function buscarAlimentoPropio(
@@ -526,11 +563,12 @@ export function listarComidasGuardadas(usuarioId: number): ComidaGuardada[] {
   });
 }
 
+/** V3 (DF-04): misma normalizacion que los alimentos propios. */
 export function existeComidaGuardada(usuarioId: number, nombre: string): boolean {
-  const fila = getDb()
-    .prepare("SELECT id FROM comidas_guardadas WHERE usuario_id = ? AND nombre = ?")
-    .get(usuarioId, nombre.trim());
-  return Boolean(fila);
+  const buscado = normalizarNombre(nombre);
+  return listarComidasGuardadas(usuarioId).some(
+    (c) => normalizarNombre(c.nombre) === buscado,
+  );
 }
 
 export function crearComidaGuardada(
@@ -800,16 +838,138 @@ export function guardarPesada(
   return { actualizada: Boolean(existente) };
 }
 
-export function eliminarPesada(usuarioId: number, id: number): void {
+/**
+ * V3 (KL-21, corrige DF-06): al eliminar la pesada que el plan usa como
+ * referencia, el plan toma la mas antigua que queda, o se queda sin referencia.
+ */
+export function eliminarPesada(usuarioId: number, id: number): string {
+  const pesada = listarPesadas(usuarioId).find((p) => p.id === id);
+  if (!pesada) return "";
+
   getDb()
     .prepare("DELETE FROM pesadas WHERE id = ? AND usuario_id = ?")
     .run(id, usuarioId);
+
+  const plan = leerPlan(usuarioId);
+  const eraReferencia = plan.referenciaFecha === pesada.fecha;
+  if (!eraReferencia) return mensajePesadaEliminada(pesada.fecha);
+
+  const quedan = listarPesadas(usuarioId);
+  const nueva = quedan[0] ?? null;
+
+  guardarPlan(usuarioId, {
+    ...plan,
+    referenciaFecha: nueva ? nueva.fecha : null,
+    referenciaPeso: nueva ? nueva.peso : null,
+  });
+
+  return mensajePesadaEliminada(pesada.fecha, nueva ? nueva.fecha : null);
+}
+
+/** Numeros de la semana que usan el resumen, el Coach y la exportacion. */
+export interface MetricasSemana {
+  balance: number;
+  diasConRegistros: number;
+  diasEnRango: number;
+  /** Dias seguidos terminando hoy con estado En rango (KL-20, regla 10). */
+  rachaEnRango: number;
+}
+
+/**
+ * Recorre los ultimos 7 dias una sola vez y arma las filas del dia a dia y las
+ * metricas de la semana. Lo usan resumenSemanal, el Coach (KL-20) y la
+ * exportacion (KL-19). El balance usa la meta vigente de hoy para todos los
+ * dias, porque la aplicacion no guarda historico de metas.
+ */
+function recorrerSemana(
+  usuarioId: number,
+  fecha: string,
+): { filas: FilaSemana[]; metricas: MetricasSemana } {
+  const perfil = leerPerfil(usuarioId);
+  const objetivo = leerObjetivo(usuarioId);
+  const plan = leerPlan(usuarioId);
+  const modo = leerModo(usuarioId);
+  const metas =
+    perfil && objetivo ? metasVigentes(perfil, objetivo, plan.ajusteAcumulado) : null;
+
+  const filas: FilaSemana[] = [];
+  const metricas: MetricasSemana = {
+    balance: 0,
+    diasConRegistros: 0,
+    diasEnRango: 0,
+    rachaEnRango: 0,
+  };
+  let rachaCortada = false;
+
+  // i = 0 es hoy. Se recorre hacia atras y despues se da vuelta, para que el
+  // archivo exportado quede del dia mas viejo al mas nuevo (KL-19, criterio 4).
+  for (let i = 0; i < DIAS_EXPORTADOS; i += 1) {
+    const dia = fechaMenosDias(fecha, i);
+    const registros = leerComidas(usuarioId, dia);
+    const ejercicios = leerEjercicios(usuarioId, dia);
+    const gastado = ejercicios.reduce((t, e) => t + e.kcal, 0);
+    const agua = leerAgua(usuarioId, dia);
+    const consumido = Math.round(registros.reduce((t, r) => t + r.kcal, 0));
+    const metaDiaCalculada = metas ? metaDelDia(metas.meta, gastado, modo) : 0;
+    const hayRegistros = registros.length > 0;
+    // KL-19, criterio 6: un dia sin nada cargado va todo en cero.
+    const diaVacio = !hayRegistros && ejercicios.length === 0 && agua === 0;
+    const estado =
+      metas && !diaVacio
+        ? estadoDelDia(consumido, metaDiaCalculada, metas.piso)
+        : null;
+
+    filas.push({
+      fecha: dia,
+      consumido,
+      gastado,
+      metaDia: diaVacio ? 0 : metaDiaCalculada,
+      balance: diaVacio ? 0 : consumido - metaDiaCalculada,
+      estado,
+      agua,
+      proteina: registros.reduce((t, r) => t + r.proteina, 0),
+      grasa: registros.reduce((t, r) => t + r.grasa, 0),
+      carbohidrato: registros.reduce((t, r) => t + r.carbohidrato, 0),
+    });
+
+    if (hayRegistros && metas) {
+      metricas.diasConRegistros += 1;
+      metricas.balance += consumido - metaDiaCalculada;
+      if (estado === "En rango") {
+        metricas.diasEnRango += 1;
+        if (!rachaCortada) metricas.rachaEnRango += 1;
+      } else {
+        rachaCortada = true;
+      }
+    } else {
+      rachaCortada = true;
+    }
+  }
+
+  filas.reverse();
+  return { filas, metricas };
+}
+
+/** Filas del resumen semanal listas para exportar a CSV (KL-19). */
+export function filasDeLaSemana(usuarioId: number, fecha: string): FilaSemana[] {
+  return recorrerSemana(usuarioId, fecha).filas;
+}
+
+/**
+ * Variacion de peso entre las dos ultimas pesadas (KL-20, regla 4).
+ * null cuando todavia no hay dos pesadas.
+ */
+export function tendenciaPeso(usuarioId: number): number | null {
+  const pesadas = listarPesadas(usuarioId);
+  if (pesadas.length < 2) return null;
+  const ultima = pesadas[pesadas.length - 1];
+  const anterior = pesadas[pesadas.length - 2];
+  return Math.round((ultima.peso - anterior.peso) * 10) / 10;
 }
 
 /**
  * Resumen semanal: variacion de peso, balance de los ultimos 7 dias con
- * registros y adherencia. El balance usa la meta vigente de hoy para todos los
- * dias, porque la aplicacion no guarda historico de metas.
+ * registros y adherencia.
  */
 export function resumenSemanal(usuarioId: number, fecha: string): ResumenSemanal {
   const pesadas = listarPesadas(usuarioId);
@@ -818,36 +978,10 @@ export function resumenSemanal(usuarioId: number, fecha: string): ResumenSemanal
       ? Math.round((pesadas[pesadas.length - 1].peso - pesadas[0].peso) * 10) / 10
       : null;
 
-  const perfil = leerPerfil(usuarioId);
-  const objetivo = leerObjetivo(usuarioId);
-  const plan = leerPlan(usuarioId);
-  const metas =
-    perfil && objetivo ? metasVigentes(perfil, objetivo, plan.ajusteAcumulado) : null;
-
-  if (!metas) {
-    return { variacionTotal, balanceSemanal: null, adherencia: null, diasConRegistros: 0 };
-  }
-
-  const modo = leerModo(usuarioId);
-  let balance = 0;
-  let diasConRegistros = 0;
-  let diasEnRango = 0;
-
-  for (let i = 0; i < 7; i += 1) {
-    const dia = fechaMenosDias(fecha, i);
-    const registros = leerComidas(usuarioId, dia);
-    if (registros.length === 0) continue;
-
-    diasConRegistros += 1;
-    const consumido = Math.round(registros.reduce((t, r) => t + r.kcal, 0));
-    const gastado = leerEjercicios(usuarioId, dia).reduce((t, e) => t + e.kcal, 0);
-    const metaDelDiaCalculada = metaDelDia(metas.meta, gastado, modo);
-
-    balance += consumido - metaDelDiaCalculada;
-    if (estadoDelDia(consumido, metaDelDiaCalculada, metas.piso) === "En rango") {
-      diasEnRango += 1;
-    }
-  }
+  const { diasConRegistros, diasEnRango, balance } = recorrerSemana(
+    usuarioId,
+    fecha,
+  ).metricas;
 
   return {
     variacionTotal,
@@ -938,6 +1072,18 @@ function evaluarPlanConPesada(
   });
 
   if (!resultado.evaluado) return [];
+
+  // V3 (DF-07): la referencia era demasiado vieja. El plan no recalcula nada:
+  // toma esta pesada como nueva referencia y avisa.
+  if (resultado.referenciaVencida) {
+    guardarPlan(usuarioId, {
+      ...plan,
+      referenciaFecha: fecha,
+      referenciaPeso: peso,
+    });
+    return resultado.avisos;
+  }
+
   if (resultado.enLinea) return resultado.avisos;
 
   guardarPlan(usuarioId, {
@@ -996,6 +1142,7 @@ export function resumenDelDia(usuarioId: number, fecha: string): ResumenDia {
       ? metasVigentes(perfil, objetivo, plan.ajusteAcumulado)
       : null;
 
+  const semana = recorrerSemana(usuarioId, fecha).metricas;
   const extraAgua = extraAguaPorEjercicio(minutosEjercicio);
   const metaAgua = metas ? metas.metaAgua + extraAgua : 0;
   const metaDiaCalculada = metas ? metaDelDia(metas.meta, gastado, modo) : 0;
@@ -1033,6 +1180,13 @@ export function resumenDelDia(usuarioId: number, fecha: string): ResumenDia {
       agua,
       metaAgua,
       diasSinEjercicio: diasSinEjercicio(usuarioId, fecha),
+      // V3 (KL-20): el Coach mira tambien la semana y el historial de peso.
+      minutosEjercicio,
+      objetivo: objetivo?.tipo ?? null,
+      tendenciaPeso: tendenciaPeso(usuarioId),
+      diasConRegistros: semana.diasConRegistros,
+      diasEnRango: semana.diasEnRango,
+      rachaEnRango: semana.rachaEnRango,
     }),
   };
 }

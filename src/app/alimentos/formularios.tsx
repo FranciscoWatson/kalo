@@ -8,6 +8,10 @@ import {
 } from "../acciones";
 import { Mensajes } from "../componentes/mensajes";
 import {
+  useCampoSincronizado,
+  useLimpiarTrasAlta,
+} from "../componentes/campos";
+import {
   LIMITES_V2,
   MENSAJES,
   MENSAJES_V2,
@@ -23,14 +27,47 @@ export function FormularioAlimentoPropio() {
     INICIAL,
   );
 
+  const [nombre, setNombre] = useState("");
+  const [porcion, setPorcion] = useState("");
+  const [kcal, setKcal] = useState("");
+  const [proteina, setProteina] = useState("");
+  const [grasa, setGrasa] = useState("");
+  const [carbohidrato, setCarbohidrato] = useState("");
+
+  // KL-22: el alta correcta limpia el formulario; el alta con error lo deja
+  // tal como estaba, para poder corregir sin volver a escribir todo.
+  useLimpiarTrasAlta(estado, () => {
+    setNombre("");
+    setPorcion("");
+    setKcal("");
+    setProteina("");
+    setGrasa("");
+    setCarbohidrato("");
+  });
+
+  const refNombre = useCampoSincronizado<HTMLInputElement>(nombre);
+  const refPorcion = useCampoSincronizado<HTMLInputElement>(porcion);
+  const refKcal = useCampoSincronizado<HTMLInputElement>(kcal);
+  const refProteina = useCampoSincronizado<HTMLInputElement>(proteina);
+  const refGrasa = useCampoSincronizado<HTMLInputElement>(grasa);
+  const refCarbohidrato = useCampoSincronizado<HTMLInputElement>(carbohidrato);
+
   return (
-    <form action={accion} key={estado.ok ? "limpio" : "cargado"}>
+    <form action={accion} noValidate>
       <Mensajes errores={estado.errores} ok={estado.mensaje ?? null} />
 
       <div className="grilla">
         <div className="campo">
           <label htmlFor="nombre">Nombre</label>
-          <input id="nombre" name="nombre" type="text" maxLength={60} />
+          <input
+            id="nombre"
+            name="nombre"
+            type="text"
+            maxLength={60}
+            ref={refNombre}
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+          />
         </div>
 
         <div className="campo">
@@ -41,27 +78,62 @@ export function FormularioAlimentoPropio() {
             type="text"
             maxLength={40}
             placeholder="1 porción (180 g)"
+            ref={refPorcion}
+            value={porcion}
+            onChange={(e) => setPorcion(e.target.value)}
           />
         </div>
 
         <div className="campo">
           <label htmlFor="kcal">Calorías (kcal)</label>
-          <input id="kcal" name="kcal" type="number" step="1" />
+          <input
+            id="kcal"
+            name="kcal"
+            type="text"
+            inputMode="decimal"
+            ref={refKcal}
+            value={kcal}
+            onChange={(e) => setKcal(e.target.value)}
+          />
         </div>
 
         <div className="campo">
           <label htmlFor="proteina">Proteína (g)</label>
-          <input id="proteina" name="proteina" type="number" step="0.1" />
+          <input
+            id="proteina"
+            name="proteina"
+            type="text"
+            inputMode="decimal"
+            ref={refProteina}
+            value={proteina}
+            onChange={(e) => setProteina(e.target.value)}
+          />
         </div>
 
         <div className="campo">
           <label htmlFor="grasa">Grasa (g)</label>
-          <input id="grasa" name="grasa" type="number" step="0.1" />
+          <input
+            id="grasa"
+            name="grasa"
+            type="text"
+            inputMode="decimal"
+            ref={refGrasa}
+            value={grasa}
+            onChange={(e) => setGrasa(e.target.value)}
+          />
         </div>
 
         <div className="campo">
           <label htmlFor="carbohidrato">Carbohidratos (g)</label>
-          <input id="carbohidrato" name="carbohidrato" type="number" step="0.1" />
+          <input
+            id="carbohidrato"
+            name="carbohidrato"
+            type="text"
+            inputMode="decimal"
+            ref={refCarbohidrato}
+            value={carbohidrato}
+            onChange={(e) => setCarbohidrato(e.target.value)}
+          />
         </div>
       </div>
 
@@ -96,6 +168,7 @@ export function FormularioComidaGuardada({
   );
 
   const [items, setItems] = useState<ItemArmado[]>([]);
+  const [nombreComida, setNombreComida] = useState("");
   const [seleccion, setSeleccion] = useState(opciones[0]?.valor ?? "");
   const [porciones, setPorciones] = useState("1");
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +177,18 @@ export function FormularioComidaGuardada({
   useEffect(() => {
     if (estado.ok) setItems([]);
   }, [estado.ok]);
+
+  // KL-22: el nombre y las porciones vuelven a su valor por defecto despues de
+  // un alta correcta; el select conserva el ultimo alimento elegido.
+  useLimpiarTrasAlta(estado, () => {
+    setNombreComida("");
+    setPorciones("1");
+    setError(null);
+  });
+
+  const refNombreComida = useCampoSincronizado<HTMLInputElement>(nombreComida);
+  const refSeleccion = useCampoSincronizado<HTMLSelectElement>(seleccion);
+  const refPorcionesItem = useCampoSincronizado<HTMLInputElement>(porciones);
 
   function agregarItem() {
     setError(null);
@@ -143,7 +228,7 @@ export function FormularioComidaGuardada({
   });
 
   return (
-    <form action={accion}>
+    <form action={accion} noValidate>
       <Mensajes
         errores={[...(error ? [error] : []), ...estado.errores]}
         ok={estado.mensaje ?? null}
@@ -157,6 +242,9 @@ export function FormularioComidaGuardada({
           type="text"
           maxLength={60}
           placeholder="Mi desayuno"
+          ref={refNombreComida}
+          value={nombreComida}
+          onChange={(e) => setNombreComida(e.target.value)}
         />
       </div>
 
@@ -165,6 +253,7 @@ export function FormularioComidaGuardada({
           <label htmlFor="item">Alimento</label>
           <select
             id="item"
+            ref={refSeleccion}
             value={seleccion}
             onChange={(e) => setSeleccion(e.target.value)}
           >
@@ -181,8 +270,9 @@ export function FormularioComidaGuardada({
           <label htmlFor="porciones-item">Porciones</label>
           <input
             id="porciones-item"
-            type="number"
-            step="0.1"
+            type="text"
+            inputMode="decimal"
+            ref={refPorcionesItem}
             value={porciones}
             onChange={(e) => setPorciones(e.target.value)}
           />

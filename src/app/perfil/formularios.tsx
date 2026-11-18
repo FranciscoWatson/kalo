@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useState } from "react";
 import {
   guardarModoAccion,
   guardarObjetivoAccion,
@@ -8,6 +8,10 @@ import {
   type EstadoFormulario,
 } from "../acciones";
 import { Mensajes } from "../componentes/mensajes";
+import {
+  useCampoSincronizado,
+  useRadioSincronizado,
+} from "../componentes/campos";
 import {
   ETIQUETA_ACTIVIDAD,
   type ModoCalculo,
@@ -18,21 +22,6 @@ import {
 import type { ObjetivoGuardado } from "@/lib/datos";
 
 const INICIAL: EstadoFormulario = { errores: [], avisos: [], ok: false };
-
-/**
- * DF-03: al guardar, la pantalla se vuelve a renderizar y el <select> del DOM
- * quedaba mostrando una opcion distinta de la que React tenia seleccionada.
- * Este gancho repara esa diferencia despues de cada render.
- */
-function useSelectSincronizado(valor: string) {
-  const referencia = useRef<HTMLSelectElement>(null);
-  useEffect(() => {
-    if (referencia.current && referencia.current.value !== valor) {
-      referencia.current.value = valor;
-    }
-  });
-  return referencia;
-}
 
 const NIVELES: NivelActividad[] = [
   "sedentario",
@@ -55,8 +44,8 @@ export function FormularioPerfil({ perfil }: { perfil: Perfil | null }) {
   // Los selects muestran siempre el valor guardado (criterio 2 de KL-18).
   // Despues de guardar manda lo que devolvio la accion, porque la pantalla
   // puede volver a renderizarse con los datos anteriores.
-  const refSexo = useSelectSincronizado(sexo);
-  const refActividad = useSelectSincronizado(actividad);
+  const refSexo = useCampoSincronizado<HTMLSelectElement>(sexo);
+  const refActividad = useCampoSincronizado<HTMLSelectElement>(actividad);
 
   const guardado = estado.guardado
     ? `${estado.guardado.sexo}|${estado.guardado.actividad}`
@@ -70,7 +59,7 @@ export function FormularioPerfil({ perfil }: { perfil: Perfil | null }) {
   }
 
   return (
-    <form action={accion}>
+    <form action={accion} noValidate>
       <Mensajes
         errores={estado.errores}
         ok={estado.ok ? "Perfil guardado." : null}
@@ -82,8 +71,8 @@ export function FormularioPerfil({ perfil }: { perfil: Perfil | null }) {
           <input
             id="edad"
             name="edad"
-            type="number"
-            step="1"
+            type="text"
+            inputMode="decimal"
             defaultValue={perfil?.edad ?? ""}
           />
         </div>
@@ -107,8 +96,8 @@ export function FormularioPerfil({ perfil }: { perfil: Perfil | null }) {
           <input
             id="peso"
             name="peso"
-            type="number"
-            step="0.1"
+            type="text"
+            inputMode="decimal"
             defaultValue={perfil?.peso ?? ""}
           />
         </div>
@@ -118,8 +107,8 @@ export function FormularioPerfil({ perfil }: { perfil: Perfil | null }) {
           <input
             id="altura"
             name="altura"
-            type="number"
-            step="1"
+            type="text"
+            inputMode="decimal"
             defaultValue={perfil?.altura ?? ""}
           />
         </div>
@@ -171,7 +160,7 @@ export function FormularioObjetivo({
   // DF-03: los campos vuelven a mostrar lo guardado cuando el objetivo cambia,
   // y solo entonces. Con un efecto, el formulario llegaba a re-renderizarse con
   // los props viejos y pisaba el objetivo que el usuario acababa de elegir.
-  const refTipo = useSelectSincronizado(tipo);
+  const refTipo = useCampoSincronizado<HTMLSelectElement>(tipo);
 
   const guardado = estado.guardado
     ? `${estado.guardado.tipo}|${estado.guardado.tasa}|${estado.guardado.pesoObjetivo}`
@@ -186,7 +175,7 @@ export function FormularioObjetivo({
   }
 
   return (
-    <form action={accion}>
+    <form action={accion} noValidate>
       <Mensajes
         errores={estado.errores}
         avisos={estado.avisos}
@@ -214,8 +203,8 @@ export function FormularioObjetivo({
           <input
             id="tasa"
             name="tasa"
-            type="number"
-            step="0.1"
+            type="text"
+            inputMode="decimal"
             disabled={tipo === "mantener"}
             value={tipo === "mantener" ? "" : tasa}
             onChange={(e) => setTasa(e.target.value)}
@@ -235,8 +224,8 @@ export function FormularioObjetivo({
           <input
             id="pesoObjetivo"
             name="pesoObjetivo"
-            type="number"
-            step="0.1"
+            type="text"
+            inputMode="decimal"
             disabled={tipo === "mantener"}
             value={tipo === "mantener" ? "" : objetivoPeso}
             onChange={(e) => setObjetivoPeso(e.target.value)}
@@ -265,8 +254,13 @@ export function FormularioPreferencias({ modo }: { modo: ModoCalculo }) {
     setElegido(modoGuardado);
   }
 
+  // KL-22, criterio 1: el radio marcado tambien se desincronizaba del DOM al
+  // guardar, y la pantalla quedaba mostrando la opcion anterior (DF-09).
+  const refNoSuma = useRadioSincronizado(elegido === "no_suma");
+  const refSuma = useRadioSincronizado(elegido === "suma");
+
   return (
-    <form action={accion}>
+    <form action={accion} noValidate>
       <Mensajes errores={estado.errores} ok={estado.mensaje ?? null} />
 
       <div className="campo">
@@ -275,6 +269,7 @@ export function FormularioPreferencias({ modo }: { modo: ModoCalculo }) {
             type="radio"
             name="modo"
             value="no_suma"
+            ref={refNoSuma}
             checked={elegido === "no_suma"}
             onChange={() => setElegido("no_suma")}
           />{" "}
@@ -288,6 +283,7 @@ export function FormularioPreferencias({ modo }: { modo: ModoCalculo }) {
             type="radio"
             name="modo"
             value="suma"
+            ref={refSuma}
             checked={elegido === "suma"}
             onChange={() => setElegido("suma")}
           />{" "}

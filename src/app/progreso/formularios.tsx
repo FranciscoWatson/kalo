@@ -1,16 +1,32 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { guardarPesadaAccion, type EstadoFormulario } from "../acciones";
 import { Mensajes } from "../componentes/mensajes";
+import {
+  useCampoSincronizado,
+  useLimpiarTrasAlta,
+} from "../componentes/campos";
 
 const INICIAL: EstadoFormulario = { errores: [], avisos: [], ok: false };
 
 export function FormularioPesada({ hoy, peso }: { hoy: string; peso: number }) {
   const [estado, accion, pendiente] = useActionState(guardarPesadaAccion, INICIAL);
 
+  const [fecha, setFecha] = useState(hoy);
+  const [valorPeso, setValorPeso] = useState(String(peso));
+
+  // KL-22: tras registrar, la fecha vuelve a hoy y el peso al del perfil.
+  useLimpiarTrasAlta(estado, () => {
+    setFecha(hoy);
+    setValorPeso(String(peso));
+  });
+
+  const refFecha = useCampoSincronizado<HTMLInputElement>(fecha);
+  const refPeso = useCampoSincronizado<HTMLInputElement>(valorPeso);
+
   return (
-    <form action={accion}>
+    <form action={accion} noValidate>
       <Mensajes
         errores={estado.errores}
         avisos={estado.avisos}
@@ -20,12 +36,15 @@ export function FormularioPesada({ hoy, peso }: { hoy: string; peso: number }) {
       <div className="fila-form">
         <div className="campo" style={{ flex: "1 1 180px" }}>
           <label htmlFor="fecha">Fecha</label>
+          {/* DF-08: sin max, para que la fecha futura la rechace la aplicación
+              con su propio mensaje y no el cartel del navegador. */}
           <input
             id="fecha"
             name="fecha"
             type="date"
-            defaultValue={hoy}
-            max={hoy}
+            ref={refFecha}
+            value={fecha}
+            onChange={(e) => setFecha(e.target.value)}
           />
         </div>
 
@@ -34,9 +53,11 @@ export function FormularioPesada({ hoy, peso }: { hoy: string; peso: number }) {
           <input
             id="peso"
             name="peso"
-            type="number"
-            step="0.1"
-            defaultValue={peso}
+            type="text"
+            inputMode="decimal"
+            ref={refPeso}
+            value={valorPeso}
+            onChange={(e) => setValorPeso(e.target.value)}
           />
         </div>
 

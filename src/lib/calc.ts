@@ -397,6 +397,13 @@ export const TOLERANCIA_ALIMENTO_MINIMA = 20;
 
 /** Reglas del ajuste dinamico del plan. */
 export const DIAS_MINIMOS_AJUSTE = 7;
+/**
+ * V3 (DF-07): con una referencia mas vieja que esto el plan no recalcula, para
+ * no proyectar un peso imposible a partir de una pesada de hace meses o anios.
+ */
+export const DIAS_MAXIMOS_AJUSTE = 60;
+/** V3 (DF-07): el peso proyectado nunca puede caer por debajo de este valor. */
+export const PESO_MINIMO_PROYECTADO = 30;
 export const DESVIO_TOLERADO_KG = 0.3;
 export const LIMITE_CORRECCION = 0.15;
 
@@ -424,6 +431,19 @@ export const MENSAJES_V2 = {
 } as const;
 
 /** Formato unico de los pesos en pantalla: siempre un decimal. */
+/**
+ * V3 (DF-04): nombre normalizado para comparar unicidad. Ignora mayusculas,
+ * tildes y espacios de mas, que es como los compara una persona.
+ */
+export function normalizarNombre(nombre: string): string {
+  return nombre
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
 export function formatearPeso(peso: number): string {
   return peso.toFixed(1);
 }
@@ -472,6 +492,48 @@ export function mensajeCorreccionAcotada(
   aplicada: number,
 ): string {
   return `La corrección calculada (${correccion} kcal) supera el límite del 15 %. Se ajustó la meta en ${aplicada} kcal.`;
+}
+
+/**
+ * V3 (DF-07): la pesada de referencia quedo demasiado vieja como para proyectar
+ * nada a partir de ella.
+ */
+export const MENSAJES_V3 = {
+  registroInexistente: "No encontramos el registro que querés eliminar.",
+  planSinReferencia:
+    "El plan no tiene una pesada de referencia: registrá una pesada para volver a seguirlo.",
+} as const;
+
+/** V3 (KL-21): el alimento propio esta siendo usado por comidas guardadas. */
+export function mensajeAlimentoEnUso(nombre: string, comidas: string[]): string {
+  const lista = comidas.map((c) => `«${c}»`).join(", ");
+  return comidas.length === 1
+    ? `No podés eliminar «${nombre}» porque forma parte de la comida guardada ${lista}.`
+    : `No podés eliminar «${nombre}» porque forma parte de las comidas guardadas ${lista}.`;
+}
+
+export function mensajeAlimentoEliminado(nombre: string): string {
+  return `Se eliminó el alimento «${nombre}».`;
+}
+
+/**
+ * V3 (KL-21). nuevaReferencia: undefined cuando la pesada borrada no era la
+ * referencia del plan, una fecha cuando el plan re-apunta, y null cuando no
+ * queda ninguna pesada.
+ */
+export function mensajePesadaEliminada(
+  fecha: string,
+  nuevaReferencia?: string | null,
+): string {
+  const base = `Se eliminó la pesada del ${formatearFecha(fecha)}.`;
+  if (nuevaReferencia === undefined) return base;
+  return nuevaReferencia === null
+    ? `${base} El plan quedó sin pesada de referencia.`
+    : `${base} El plan toma como referencia la pesada del ${formatearFecha(nuevaReferencia)}.`;
+}
+
+export function mensajeReferenciaVencida(dias: number): string {
+  return `La pesada de referencia es de hace ${dias} días: el plan la descarta y toma esta pesada como nueva referencia.`;
 }
 
 export function mensajeObjetivoCumplido(pesoObjetivo: number): string {
@@ -642,6 +704,8 @@ export interface ResultadoAjuste {
   ajusteAplicado: number;
   metaAnterior: number;
   metaNueva: number;
+  /** V3: la referencia era mas vieja que DIAS_MAXIMOS_AJUSTE y se descarto. */
+  referenciaVencida: boolean;
   avisos: string[];
 }
 
@@ -680,15 +744,29 @@ export function evaluarAjustePlan(params: {
     ajusteAplicado: 0,
     metaAnterior: metaVigente,
     metaNueva: metaVigente,
+    referenciaVencida: false,
     avisos: [],
   };
 
   if (dias < DIAS_MINIMOS_AJUSTE) return base;
 
+  // V3 (DF-07): una referencia de hace mas de 60 dias no sirve para proyectar.
+  // El plan no recalcula: descarta la referencia y avisa.
+  if (dias > DIAS_MAXIMOS_AJUSTE) {
+    return {
+      ...base,
+      evaluado: true,
+      referenciaVencida: true,
+      avisos: [mensajeReferenciaVencida(dias)],
+    };
+  }
+
   const semanas = dias / 7;
   let pesoProyectado = pesoReferencia;
   if (objetivo === "bajar") pesoProyectado = pesoReferencia - tasa * semanas;
   if (objetivo === "subir") pesoProyectado = pesoReferencia + tasa * semanas;
+  // V3 (DF-07): la proyeccion no puede dar un peso fuera del rango admitido.
+  pesoProyectado = Math.max(pesoProyectado, PESO_MINIMO_PROYECTADO);
 
   const desvio = pesoReal - pesoProyectado;
 
@@ -736,6 +814,7 @@ export function evaluarAjustePlan(params: {
     ajusteAplicado,
     metaAnterior: metaVigente,
     metaNueva,
+    referenciaVencida: false,
     avisos,
   };
 }

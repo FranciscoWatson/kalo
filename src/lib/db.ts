@@ -166,6 +166,10 @@ export function getDb(): DatabaseSync {
   if (!instancia) {
     instancia = new DatabaseSync(RUTA_DB);
     instancia.exec("PRAGMA foreign_keys = ON;");
+    // V3: los casos automatizados escriben en la base mientras el servidor la
+    // esta usando. Con WAL eso funciona, pero conviene esperar en vez de
+    // fallar si justo coinciden dos escrituras.
+    instancia.exec("PRAGMA busy_timeout = 5000;");
     crearEsquema(instancia);
   }
   return instancia;

@@ -46,3 +46,8 @@ kalo.db-*
 # archivos de configuración de agentes
 AGENTS.md
 CLAUDE.md
+
+# Playwright (Entrega 03)
+/test-results/
+/playwright-report/
+/blob-report/

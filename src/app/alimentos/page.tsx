@@ -8,14 +8,12 @@ import {
 } from "@/lib/datos";
 import { Barra } from "../componentes/barra";
 import { BotonEliminar } from "../componentes/eliminar";
-import {
-  eliminarAlimentoPropioAccion,
-  eliminarComidaGuardadaAccion,
-} from "../acciones";
+import { eliminarComidaGuardadaAccion } from "../acciones";
 import {
   FormularioAlimentoPropio,
   FormularioComidaGuardada,
 } from "./formularios";
+import { TablaAlimentosPropios } from "./listas";
 
 export const dynamic = "force-dynamic";
 
@@ -45,39 +43,7 @@ export default async function PaginaAlimentos() {
           <h2>Mis alimentos</h2>
           <FormularioAlimentoPropio />
 
-          {propios.length === 0 ? (
-            <p className="vacio">Todavía no cargaste alimentos propios.</p>
-          ) : (
-            <table style={{ marginTop: "1rem" }}>
-              <thead>
-                <tr>
-                  <th>Alimento</th>
-                  <th>Porción</th>
-                  <th className="num">kcal</th>
-                  <th className="num">P / G / C</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {propios.map((a) => (
-                  <tr key={a.idNumerico}>
-                    <td>{a.nombre}</td>
-                    <td>{a.porcion}</td>
-                    <td className="num">{a.kcal}</td>
-                    <td className="num">
-                      {a.proteina} / {a.grasa} / {a.carbohidrato}
-                    </td>
-                    <td className="num">
-                      <BotonEliminar
-                        accion={eliminarAlimentoPropioAccion}
-                        id={a.idNumerico}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <TablaAlimentosPropios propios={propios} />
         </section>
 
         <section className="tarjeta">

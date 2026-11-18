@@ -14,14 +14,16 @@ import {
 } from "@/lib/datos";
 import {
   ETIQUETA_ESTADO_PLAN,
+  MENSAJES_V3,
   formatearFecha,
   formatearPeso,
 } from "@/lib/calc";
+import { LEYENDA_EXPORTAR, SIN_PLAN_EXPORTAR } from "@/lib/exportar";
 import { Barra } from "../componentes/barra";
 import { Mensajes } from "../componentes/mensajes";
-import { BotonEliminar } from "../componentes/eliminar";
-import { cambiarEstadoPlanAccion, eliminarPesadaAccion } from "../acciones";
+import { cambiarEstadoPlanAccion } from "../acciones";
 import { FormularioPesada } from "./formularios";
+import { TablaPesadas } from "./listas";
 
 export const dynamic = "force-dynamic";
 
@@ -124,6 +126,10 @@ export default async function PaginaProgreso() {
             </form>
           ) : null}
 
+          {plan.referenciaFecha === null ? (
+            <p className="pie-nota">{MENSAJES_V3.planSinReferencia}</p>
+          ) : null}
+
           <p className="pie-nota">
             Ajuste acumulado sobre la meta: {plan.ajusteAcumulado > 0 ? "+" : ""}
             {plan.ajusteAcumulado} kcal.
@@ -137,40 +143,30 @@ export default async function PaginaProgreso() {
 
         <section className="tarjeta">
           <h2>Historial de pesadas</h2>
-          {pesadas.length === 0 ? (
-            <p className="vacio">Todavía no registraste ninguna pesada.</p>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th className="num">Peso</th>
-                  <th className="num">Variación</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {pesadas.map((p) => (
-                  <tr key={p.id}>
-                    <td>{formatearFecha(p.fecha)}</td>
-                    <td className="num">{formatearPeso(p.peso)} kg</td>
-                    <td className="num">
-                      {p.variacion === null
-                        ? ""
-                        : `${p.variacion > 0 ? "+" : ""}${p.variacion.toFixed(1)} kg`}
-                    </td>
-                    <td className="num">
-                      <BotonEliminar accion={eliminarPesadaAccion} id={p.id} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <TablaPesadas pesadas={pesadas} />
         </section>
 
         <section className="tarjeta">
-          <h2>Resumen semanal</h2>
+          <div className="titulo-con-accion">
+            <h2>Resumen semanal</h2>
+            {metas ? (
+              <a
+                className="secundario"
+                href="/progreso/exportar"
+                id="exportar-semana"
+                download
+              >
+                Exportar la semana (CSV)
+              </a>
+            ) : (
+              <button type="button" id="exportar-semana" disabled>
+                Exportar la semana (CSV)
+              </button>
+            )}
+          </div>
+          <p className="pie-nota" id="leyenda-exportar">
+            {metas ? LEYENDA_EXPORTAR : SIN_PLAN_EXPORTAR}
+          </p>
           <div className="metricas">
             <div className="metrica">
               <div className="etiqueta">Variación total</div>
